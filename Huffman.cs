@@ -32,16 +32,17 @@ namespace Huffman
             foreach (char c in input)
                 charCount[c].count++;
 
-            foreach (var c in charCount.Where(x => x.count > 0).OrderByDescending(x => x.count))
+            foreach (var c in charCount.Where(x => x.count > 0).OrderByDescending(x => x.count).ThenBy(x => x.character))
                 freqLijst.Items.Add(c.character + " : " + c.count);
 
             // 2. sorteer het array d.m.v. binary sort (de sorteer functie kan je hergebruiken uit een vorige opdracht)
             // ...
-            charCount = charCount.OrderByDescending(x => x.count).ToArray();
+            charCount = charCount.OrderByDescending(x => x.count).ThenBy(x => x.character).ToArray();
 
             // 3. maak voor alle relevante klassen in charCount knopen aan met als userObject de betreffende charCount
             // en plaats deze in een nieuw ArrayList (een ArrayList kun je dynamisch verkleinen, dat straks nodig is)
-            ArrayList knopen = new ArrayList();
+            //ArrayList knopen = new ArrayList();
+            List<Knoop> knopen = new List<Knoop>();
             // ...
             foreach (CharCount c in charCount.Where(x => x.count > 0))
                 knopen.Add(new Knoop(c));
@@ -64,11 +65,14 @@ namespace Huffman
 
                 knoop.userObject.count = knoop1.userObject.count + knoop2.userObject.count;
 
-                knoop.AddKnoopLinks(knoop1);
-                knoop.AddKnoopRechts(knoop2);
+                knoop.AddKnoopLinks(knoop2);
+                knoop.AddKnoopRechts(knoop1);
                 knopen[charsLeft] = knoop;
 
                 knopen.Remove(knoop2);
+
+                knopen.OrderByDescending(x => x.userObject.count).ThenBy(x => x.userObject.character);
+
                 //tmpKnopen.Sort();
                 //tmpKnopen = (tmpKnopen as List<Knoop>).OrderBy(x => (x as Knoop).userObject.count);
                 charsLeft = charsLeft - 1;
@@ -94,19 +98,21 @@ namespace Huffman
             string outputStr = "";
             // ...
             var searcher = tree.GetEnumerator();
+            string code = string.Empty;
             foreach (char c in input)
             {
-                bool gevonden = false;
                 while (searcher.MoveNext())
                 {
                     var charCount = (CharCount)searcher.Value;
                     if (charCount.character == c)
                     {
                         outputStr += charCount.binaireWaarde;
+                        code = charCount.binaireWaarde;
                         break;
                     }
                 }
-                Debug.WriteLine("Found char: " + c + "OutputString is: " + outputStr);
+                searcher = tree.GetEnumerator();
+                Debug.WriteLine("Found char: " + c + " With binary: " + code + " OutputString is: " + outputStr);
             }
             // 7. loop over alle knopen in de tree
             // voeg aan de freqlijst.Items nieuwe items toe in het format: "count x character"
@@ -125,42 +131,86 @@ namespace Huffman
 
         private void GoBinaryLeft(Knoop k, string code)
         {
-            code += '0';
+
             if (k.links == null)
                 k.userObject.binaireWaarde = code;
             else
+            {
+                code += '0';
                 GetBinaryValue(k.links, code);
+            }
         }
 
         private void GoBinaryRight(Knoop k, string code)
         {
-            code += '1';
+
             if (k.rechts == null)
                 k.userObject.binaireWaarde = code;
             else
+            {
+                code += '1';
                 GetBinaryValue(k.rechts, code);
+            }
         }
         #endregion
 
-        #region Get characters from binary
-        public void GetCharacterValue(Knoop k, string output, string input)
-        {           
-            if(input[0] == '0')
-                GoCharacterLeft(k, output, input);
+        #region DEPRECATED Get characters from binary
+        //Another try
+        public void GetCharacterValue2(Knoop k, ref string output, string input, int index)
+        {
+            if (index >= input.Length)
+                return; //We are done going through te string, lets quit
+
+            bool gevonden = false;
+            if (k.rechts == null || k.links == null)
+            {
+                output += k.userObject.character;
+                gevonden = true;
+            }
+
+            if (!gevonden && input[index] == '1') //Go right
+                GetCharacterValue2(k.rechts, ref output, input, index + 1);
+            else if (!gevonden && input[index] == '0') //Go left
+                GetCharacterValue2(k.links, ref output, input, index + 1);
+
+            //Go for next character
+            GetCharacterValue2(boom, ref output, input, index + 1);
+        }
+
+        public void GetCharacterValue(Knoop k, ref string output, string input, int index)
+        {
+            if (input[index] == '1')
+                GoCharacterRight(k, ref output, input, index);
             else
-                GoCharacterRight(k, output, input);
+                GoCharacterLeft(k, ref output, input, index);
         }
 
-        private void GoCharacterLeft(Knoop k, string output, string input)
+        private void GoCharacterLeft(Knoop k, ref string output, string input, int index)
         {
-            
+            //in blad?
+            if (k.links == null)
+            {
+                output += k.userObject.character;
+                GetCharacterValue(boom, ref output, input, index + 1);
+            }
+            else
+            {
+                GetCharacterValue(k.links, ref output, input, index + 1);
+            }
         }
 
-        private void GoCharacterRight(Knoop k, string output, string input)
+        private void GoCharacterRight(Knoop k, ref string output, string input, int index)
         {
-
+            if (k.rechts == null)
+            {
+                output += k.userObject.character;
+                GetCharacterValue(boom, ref output, input, index + 1);
+            }
+            else
+                GetCharacterValue(k.rechts, ref output, input, index + 1);
         }
         #endregion
+
         public string Decodeer(string input)
         {
             string str = "";
@@ -174,22 +224,25 @@ namespace Huffman
             // als dat niet lukt zit je in een blad
             // voeg dan de character toe aan de output string en ga links vanaf de boom
 
-            var searcher = this.boom.GetEnumerator();
-            foreach (char c in input)
+            //GetCharacterValue2(boom, ref str, input, 0);
+
+            Knoop current = boom;
+            for(int i = 0; i < input.Length; i++)
             {
-                while (searcher.MoveNext())
+                if(current.links == null && current.rechts == null)
                 {
-                    var charCount = (CharCount)searcher.Value;
-                    if (charCount.character == c)
-                    {
-                        outputStr += charCount.binaireWaarde;
-                        break;
-                    }
+                    str += current.userObject.character;
+                    current = input[i] == '1' ? boom.rechts : boom.links;
+                    continue;
                 }
-                Debug.WriteLine("Found char: " + c + "OutputString is: " + outputStr);
+
+                //See if this is the last character
+                if (i + 1 == input.Length)
+                    str += input[i] == '1' ? current.rechts.userObject.character : current.links.userObject.character;
+
+                if (input[i] == '1') current = current.rechts;
+                else current = current.links;
             }
-
-
             // return output string
             return str;
         }
